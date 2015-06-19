@@ -7,7 +7,6 @@
 
 (q/defcomponent Event [ev channels]
   (let [show-class (if (:visible? ev) "vis" " invis " )]
-(println show-class)
     (d/div {:className show-class}
            (d/dt {:className "timeline-event"}
                  (d/a nil (:title ev)))
@@ -17,12 +16,17 @@
 
 
 (q/defcomponent Section [section channels ]
-  (d/div {:className "timeline-wrapper"}
-         (d/h2 {:className "timeline-time"
-                :onClick #(go (>! (:toggle-section-visibility channels) (:section-title section)))}
-               (d/span nil (:section-title section))) 
-         (apply d/dl {:className "timeline-series"}
-                (map  #(Event (assoc % :visible? (:visible? section)) channels) (:data section)))))
+  (d/div {:className "timeline-wrapper" }
+  (d/a {:name (:section-title section)})
+ ; (d/a {:href (str "#" (:section-title section))}         
+       (d/h2 {:className "timeline-time"
+              :onClick #(go (>! (:toggle-section-visibility channels) (:section-title section)) nil)
+              }
+             (d/span nil (:section-title section)))
+                                        ;
+  ;) 
+  (apply d/dl {:className "timeline-series"}
+         (map  #(Event (assoc % :visible? (:visible? section)) channels) (:data section)))))
  
 
 (q/defcomponent Timeline [state channels]
