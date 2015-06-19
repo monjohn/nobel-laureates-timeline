@@ -23,7 +23,6 @@
               :onClick #(go (>! (:toggle-section-visibility channels) (:section-title section)) nil)
               }
              (d/span nil (:section-title section)))
-                                        ;
   ;) 
   (apply d/dl {:className "timeline-series"}
          (map  #(Event (assoc % :visible? (:visible? section)) channels) (:data section)))))
