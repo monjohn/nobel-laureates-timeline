@@ -1,44 +1,60 @@
 (ns timeline.render
-  (:require [cljs.core.async :as a]
+  (:require [cljs.core.async :refer [>! <! chan]]
             [quiescent.core :as q :include-macros true]
             [quiescent.dom :as d])
   (:require-macros [cljs.core.async.macros :refer [go]]))
 
+(q/defcomponent Button [category channel]
+  (d/button {:className "buttons"
+             :onClick #(go (>! channel category))}
+            category))
 
-(q/defcomponent Event [ev channels]
-  (let [show-class (if (:visible? ev) "vis" " invis " )]
-    (d/div {:className show-class}
-           (d/dt {:className "timeline-event"}
-                 (d/a nil (:title ev)))
-           (d/dd {:className (str show-class "timeline-event-content")}
-                 (d/p nil (:content ev))
-                 (d/br {:className "clear"})))))
+(q/defcomponent Event [ev wikidata channels]
+  (let [;show-class (if (:visible? ev) "vis" " invis " )
+        laureates (:laureates ev)
+        make-url #(str "http://wikipedia.com/" % )]
+    (d/div {:className "cd-timeline-content"}
+           (apply d/div nil 
+                  (map  #(let [wdata (get wikidata (:id %)) ]  
+                           (d/a {:href (make-url (:url wdata)) :className "tooltip"}  
+                                             (d/h3 nil 
+                                                   (str (:firstname %) " " (:surname %))) 
+                                             (d/span {:className "tooltip-content"} 
+                                                     (:initial-paragraph wdata) )))   laureates)) 
+         (d/p nil (:prize ev))
+           (d/span {:className "cd-date"} (:category ev)))
+))
 
 
-(q/defcomponent Section [section channels ]
-  (d/div {:className "timeline-wrapper" }
-  (d/a {:name (:section-title section)})
- ; (d/a {:href (str "#" (:section-title section))}         
-       (d/h2 {:className "timeline-time"
-              :onClick #(go (>! (:toggle-section-visibility channels) (:section-title section)) nil)
-              }
-             (d/span nil (:section-title section)))
-  ;) 
-  (apply d/dl {:className "timeline-series"}
-         (map  #(Event (assoc % :visible? (:visible? section)) channels) (:data section)))))
- 
+(q/defcomponent Section [section wikidata channels ]
+  (d/div {:className "cd-timeline-block" }
+     ;    (d/a {:name (:section-title section)})
+         (d/div {:className "cd-timeline-img cd-picture"
+                :onClick #(go (>! (:toggle-section-visibility channels) (:section-title section)) nil)}
+                (d/span nil 
+                        (:section-title section)))
+         (apply d/div {:className "timeline-series"}
+                (map  #(Event (assoc % :visible? (:visible? section)) wikidata channels) (:data section)))))
+
 
 (q/defcomponent Timeline [state channels]
-  (d/div {:id "timeline" :className "timeline-container"}
-         (d/button {:className "timeline-toggle"
-                    :onClick  #(go (>! (:show-all? channels) true))}
-                   "+ expand all")
-         (d/br "clear")
-         (d/h1 nil (:heading state))
-         (apply d/div nil
-                (map #(Section % channels) (:data state)))
-         (d/br {:classNameName "clear"})))
+  (d/div nil
+         (apply d/div {:className "button-row"}
+                (map  #(Button % (:filter-by-category channels)) (:categories state))
+                )
+         (d/section {:id "cd-timeline" :className ""}
+                    (apply d/div {:className "cd-container"}
+                           (map #(Section % (:wikidata state) channels) (:filtered state))) )))
 
+
+(q/defcomponent App [state channels]
+  (d/div {:className ""}
+         (d/header nil
+                   (d/h1 nil "Nobel Prize Winners"))
+         (Timeline state channels)
+         (d/footer nil
+                   (d/p nil "Design from http://codyhouse.co/gem/vertical-timeline/")
+          )))
 
 ;; Here we use an atom to tell us if we already have a render queued
 ;; up; if so, requesting another render is a no-op
@@ -49,6 +65,6 @@
     (when (compare-and-set! render-pending? false true)
       (.requestAnimationFrame js/window
                               (fn []
-                                (q/render (Timeline @(:state app) (:channels app))
+                                (q/render (App @(:state app) (:channels app))
                                           (.getElementById js/document "qui"))
                                 (reset! render-pending? false))))))

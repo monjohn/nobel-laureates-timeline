@@ -3,59 +3,71 @@
    [cljs.core.async :refer [>! <! chan]]
    [cljs-http.client :as http]
    [timeline.data :as data]
-   [timeline.render :as render])
+   [timeline.render :as render]
+   [timeline.wikipedia :refer [wikidata]])
   (:require-macros [cljs.core.async.macros :refer [go] ]))
 
 (enable-console-print!)
 
-(defn nobel-heading [data]
-  (:category  (first data)))
+(declare format-nobel-data)
+
+(defn filter-by-category [state category]
+  (let [data (if (= "all" category) (:data state)
+                 (filter #(= category (:category %)) (:data state)))]
+    (assoc state :filtered (format-nobel-data data)
+           :filter nil)))
 
 (defn format-nobel-people [people]
   (map (fn [x] 
          (let [laureates (map #( str  (:firstname %) " " (:surname %))   (:laureates x))
                title  (if (> (count laureates) 1) (clojure.string/join " & " laureates) (first laureates) )
-               content  (str "Prize: " (:motivation (first (:laureates x))))]
-           (assoc x :title title :content content ))) people))
+               prize  (str  (:motivation (first (:laureates x))))]
+           (assoc x :title title :prize prize))) people))
 
-
-; [1934 [{:category "physics"...}]]
 (defn format-nobel-data [data]
-  (let [formatted (format-nobel-people data)
-        sorted (into (sorted-map) (group-by :year formatted))]
+  (let [sorted (into (sorted-map) (group-by :year data))]
     (map #(hash-map :section-title (first %) 
-                    :visible? true 
                     :data (second %)) sorted)))
 
+; [1934 [{:category "physics"...}]]
+(defn init-nobel-data [data]
+  (let [sorted (into (sorted-map) (group-by :year data))]
+    (map #(hash-map :section-title (first %) 
+                   :visible? true
+                    :data (second %)) sorted)))
+
+(defn handle-response [state data]
+  (let [formatted (-> data
+                      format-nobel-people
+                      init-nobel-data)
+        categories (keys (group-by :category data))]
+    (filter-by-category (assoc state :categories categories
+                               :data (format-nobel-people data) 
+                               :filter "physics"
+                               :filtered formatted) "physics" )))
+
+
+
+(defn toggle-section-visibility [state section]
+  (assoc state :filtered  (map #(if (=  section (:section-title %))
+                              (update-in %  [:visible?] not )
+                              %) (:filtered state))))
+
 (defn get-nobel-data [response-chan] 
-  (go (let [response (<! (http/get "http://api.nobelprize.org/v1/prize.json?year=1915&yearTo=1927&category=physics" 
+  (go (let [response (<! (http/get "http://api.nobelprize.org/v1/prize.json" 
                                    {:with-credentials? false} ))]
         (>! response-chan (get-in response [:body :prizes])))))
 
-(defn handle-response [state body]
-  (let [heading (nobel-heading body)]
-    (assoc state :heading heading 
-           :data (format-nobel-data body))))
-
-(defn toggle-show-all [state bool]
-  (let [data (map #(update-in % [:visible?] not) (:data state))]
-    (assoc state :data data)))
-
-(defn toggle-section-visibility [state section]
-  (assoc state :data  (map #(if (=  section (:section-title %))
-                              (update-in %  [:visible?] not )
-                              %) (:data state))))
+(defn get-saved-data [response-chan]
+  (>! response-chan (data/data)))
 
 (defn load-app []
-  {:state (atom {:show-all? false}) ; (atom (update-in (data/data) [:data]  #(seq (into (sorted-map) %))))
-   :channels {:show-all? (chan)
-              :http-response (chan)
-              :toggle-section-visibility (chan)
-              :toggle (chan)}
-   :consumers {:show-all? toggle-show-all
-                           :http-response handle-response
-                           :toggle-section-visibility toggle-section-visibility
-                           }})
+  {:state (atom {:wikidata wikidata
+                 :show-all? false}) ; (atom (update-in (data/data) [:data]  #(seq (into (sorted-map) %))))
+   :channels {:filter-by-category (chan)
+              :http-response (chan)}
+   :consumers {:filter-by-category filter-by-category
+               :http-response handle-response}})
 
 (defn init-updates
   "For every entry in a map of channel identifiers to consumers,
