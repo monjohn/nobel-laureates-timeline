@@ -10,25 +10,24 @@
             category))
 
 (q/defcomponent Event [ev wikidata channels]
-  (let [;show-class (if (:visible? ev) "vis" " invis " )
-        laureates (:laureates ev)
+  (let [laureates (:laureates ev)
         make-url #(str "http://wikipedia.com/" % )]
     (d/div {:className "cd-timeline-content"}
            (apply d/div nil 
-                  (map  #(let [wdata (get wikidata (:id %)) ]  
+                  (map  #(let [wdata (get wikidata (:id %))
+                               show-class (if (:visible? %) "vis" " invis " )]  
                            (d/a {:href (make-url (:url wdata)) :className "tooltip"}  
                                              (d/h3 nil 
                                                    (str (:firstname %) " " (:surname %))) 
-                                             (d/span {:className "tooltip-content"} 
+                                             (d/span {:className "tooltip-content"
+                                                      } 
                                                      (:initial-paragraph wdata) )))   laureates)) 
          (d/p nil (:prize ev))
-           (d/span {:className "cd-date"} (:category ev)))
-))
+           (d/span {:className "cd-date"} (:category ev)))))
 
 
 (q/defcomponent Section [section wikidata channels ]
   (d/div {:className "cd-timeline-block" }
-     ;    (d/a {:name (:section-title section)})
          (d/div {:className "cd-timeline-img cd-picture"
                 :onClick #(go (>! (:toggle-section-visibility channels) (:section-title section)) nil)}
                 (d/span nil 
