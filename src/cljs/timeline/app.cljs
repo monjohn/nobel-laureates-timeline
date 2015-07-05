@@ -11,30 +11,41 @@
 
 (declare format-nobel-data)
 
-(defn filter-by-category [state category]
-  (let [data (if (= "all" category) (:data state)
-                 (filter #(= category (:category %)) (:data state)))]
-    (assoc state :filtered (format-nobel-data data)
-           :filter nil)))
+(defn get-nobel-data [response-chan] 
+  (go (let [response (<! (http/get "http://api.nobelprize.org/v1/prize.json" 
+                                   {:with-credentials? false} ))]
+        (>! response-chan (get-in response [:body :prizes])))))
+
+(defn sample-data [response-chan]
+  (>! response-chan (data/data)))
 
 (defn format-nobel-people [people]
   (map (fn [x] 
-         (let [laureates (map #( str  (:firstname %) " " (:surname %))   (:laureates x))
-               title  (if (> (count laureates) 1) (clojure.string/join " & " laureates) (first laureates) )
-               prize  (str  (:motivation (first (:laureates x))))]
-           (assoc x :title title :prize prize))) people))
+         (let [laureates (map #(assoc % :visible? false)    (:laureates x))
+               prize  (str (:motivation (first (:laureates x))))]
+           (assoc x :laureates laureates :prize prize ))) people))
 
 (defn format-nobel-data [data]
   (let [sorted (into (sorted-map) (group-by :year data))]
     (map #(hash-map :section-title (first %) 
                     :data (second %)) sorted)))
 
+(defn filter-by-category [state category]
+  (let [data (filter #(= category (:category %)) (:data state))]
+    (assoc state :filtered (format-nobel-data data)
+           :filter category)))
+
+(defn make-invisible [laureates]
+  (map (fn [x] assoc x :visible? true) laureates))
+
 ; [1934 [{:category "physics"...}]]
 (defn init-nobel-data [data]
   (let [sorted (into (sorted-map) (group-by :year data))]
-    (map #(hash-map :section-title (first %) 
-                   :visible? true
-                    :data (second %)) sorted)))
+    (map #(let [NOT-USED (map (fn [prize] 
+                                   (update prize :laureates make-invisible)) 
+                                 (second %))] 
+            (hash-map :section-title (first %) 
+                      :data data)) sorted))) 
 
 (defn handle-response [state data]
   (let [formatted (-> data
@@ -46,29 +57,29 @@
                                :filter "physics"
                                :filtered formatted) "physics" )))
 
+(defn laureate-vis [laureates id]
+   (map #(if (=  id (:id %)) 
+           (update %  :visible? not )
+           %) 
+        laureates)) 
 
+(defn laureates-visibility [prizes id]
+  (map #(update % :laureates laureate-vis id) prizes))
 
-(defn toggle-section-visibility [state section]
-  (assoc state :filtered  (map #(if (=  section (:section-title %))
-                              (update-in %  [:visible?] not )
-                              %) (:filtered state))))
-
-(defn get-nobel-data [response-chan] 
-  (go (let [response (<! (http/get "http://api.nobelprize.org/v1/prize.json" 
-                                   {:with-credentials? false} ))]
-        (>! response-chan (get-in response [:body :prizes])))))
-
-(defn get-saved-data [response-chan]
-  (>! response-chan (data/data)))
+(defn toggle-detail-visibility [state id]
+  (let [filtered (:filtered state)]   
+    (assoc state :filtered (map #(update-in % [:data] laureates-visibility id)  
+                                 (:filtered state)))))
 
 (defn load-app []
-  {:state (atom {:wikidata wikidata
-                 :show-all? false}) ; (atom (update-in (data/data) [:data]  #(seq (into (sorted-map) %))))
-   :channels {:filter-by-category (chan)
+  {:state (atom {:wikidata wikidata}) 
+   :channels {:toggle-details (chan)
+              :filter-by-category (chan)
               :http-response (chan)}
-   :consumers {:filter-by-category filter-by-category
+   :consumers {:toggle-details toggle-detail-visibility
+               :filter-by-category filter-by-category
                :http-response handle-response}})
-
+ 
 (defn init-updates
   "For every entry in a map of channel identifiers to consumers,
   initiate a channel listener which will update the application state

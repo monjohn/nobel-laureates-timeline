@@ -51,6 +51,7 @@ h1, h2, h3, .cd-timeline-img span, .buttons {
 .invis {
   display: none;
 }
+
 /* --------------------------------
 
 Modules - reusable parts of our design
@@ -68,7 +69,12 @@ Modules - reusable parts of our design
   display: table;
   clear: both;
 }
+.title:hover {
+  text-decoration-style: dashed;
+  text-decoration: underline;
+  text-decoration-color: #d7e4ed;
 
+}
 /* --------------------------------
 
 Main components
